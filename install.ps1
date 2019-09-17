@@ -4,6 +4,8 @@ $content = '$profile="$home\Documents\WindowsPowerShell\profile.ps1"'
 $pwshConsole = "$home\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1"
 $pwshISE = "$home\Documents\WindowsPowerShell\Microsoft.PowerShellISE_profile.ps1"
 
+New-Item -ItemType Directory -Path "$home\Documents\WindowsPowerShell\log"
+
 Remove-Item -Path $pwshConsole
 Remove-Item -Path $pwshISE
 Write-Verbose "Updating Console and ISE profiles..."
