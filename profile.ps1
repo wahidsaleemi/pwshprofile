@@ -1,15 +1,16 @@
-#Logging
+#region Logging
 $PSLogPath = ("{0}{1}\Documents\WindowsPowerShell\log\{2:yyyyMMdd}-{3}.log" -f $env:HOMEDRIVE, $env:HOMEPATH,  (Get-Date), $PID)
 Add-Content -Value "# $(Get-Date) $env:username $env:computername" -Path $PSLogPath -erroraction SilentlyContinue
 Add-Content -Value "# $(Get-Location)" -Path $PSLogPath -erroraction SilentlyContinue
- 
-# PSReadLine Settings
+#endregion
+
+#region PSReadLine Settings
 Set-PSReadLineOption -HistorySearchCursorMovesToEnd
 Set-PSReadlineKeyHandler -Key UpArrow -Function HistorySearchBackward
 Set-PSReadlineKeyHandler -Key DownArrow -Function HistorySearchForward
 Set-PSReadlineOption -BellStyle None #Disable ding on typing error
 Set-PSReadlineOption -EditMode Emacs #Make TAB key show parameter options
-Set-PSReadlineKeyHandler -Key Ctrl+i -ScriptBlock { Start-Process "${env:ProgramFiles(x86)}\vivaldi\Application\vivaldi.exe" -ArgumentList "https://www.bing.com" } #KEY: Load Browsers using key "C:\Program Files (x86)\Vivaldi\Application\vivaldi.exe"
+Set-PSReadlineKeyHandler -Key Ctrl+i -ScriptBlock { Start-Process "${env:ProgramFiles}\vivaldi\Application\vivaldi.exe" -ArgumentList "https://www.bing.com" } #KEY: Load Browsers using key "C:\Program Files\Vivaldi\Application\vivaldi.exe"
  
 #KEY: Git, press Ctrl+Shift+G (case sensitive)
 Set-PSReadlineKeyHandler -Chord Ctrl+G -ScriptBlock {
@@ -19,8 +20,9 @@ Set-PSReadlineKeyHandler -Chord Ctrl+G -ScriptBlock {
 		Write-Host "Pushing ${branch} to remote"
 		/usr/bin/git push origin $branch | Write-Host
 }
+#endregion
 
-#Functions
+#region Functions
 function Get-DirectorySize($Path='.',$InType="MB")
 {
 	$colItems = (Get-ChildItem $Path -recurse | Measure-Object -property length -sum)
@@ -36,7 +38,29 @@ function Get-DirectorySize($Path='.',$InType="MB")
 function Test-IsAdmin {
 ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
 }
+#endregion
 
+#region Az Subscription Helper
+## Source: https://millerb.co.uk/2019/09/11/Tab-Completion-Azure-Subscriptions.html
+# Get all azure subscriptions as a background job
+Get-AzSubscription -AsJob -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
+
+Register-ArgumentCompleter -CommandName Set-AzContext -ParameterName Subscription -ScriptBlock {
+    # If the job exists from the command Get-AzSubscription, receive the results & remove the job
+    if ($job = Get-job -Command Get-AzSubscription | Wait-Job) {
+        $global:azSubscriptions = Receive-Job -Id $job.Id | Select-Object -ExpandProperty name
+        Remove-Job -Id $job.Id
+    }
+    # Add the completion results for the parameter
+    $global:azSubscriptions | foreach-object {
+        [System.Management.Automation.CompletionResult]::new(
+            $_
+        )
+    }
+}
+#endregion
+
+#region Prompt
 function global:prompt {
 	#Put the full path in the title bar
  
@@ -76,3 +100,4 @@ function global:prompt {
 	Write-Host -NoNewline " PS$('>' * ($nestedPromptLevel + 1)) " -ForegroundColor $userColor
 	Return " "
 }
+#endregion
