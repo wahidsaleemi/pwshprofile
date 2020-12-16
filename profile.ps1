@@ -4,7 +4,20 @@ Add-Content -Value "# $(Get-Date) $env:username $env:computername" -Path $PSLogP
 Add-Content -Value "# $(Get-Location)" -Path $PSLogPath -erroraction SilentlyContinue
 #endregion
 
+#region Modules
+## Modules needed for Powerline (Git info): https://docs.microsoft.com/en-us/windows/terminal/tutorials/powerline-setup
+Import-Module Posh-Git
+Import-Module Oh-My-Posh
+
+## Autocomplete
+Import-Module PSReadLine
+#endregion
+
 #region PSReadLine Settings
+## Set text prediction https://devblogs.microsoft.com/powershell/announcing-psreadline-2-1-with-predictive-intellisense/
+Set-PSReadLineOption -PredictionSource History
+
+## Other options
 Set-PSReadLineOption -HistorySearchCursorMovesToEnd
 Set-PSReadlineKeyHandler -Key UpArrow -Function HistorySearchBackward
 Set-PSReadlineKeyHandler -Key DownArrow -Function HistorySearchForward
@@ -88,7 +101,6 @@ function global:prompt {
 	}
  
 	$nextCommand = $lastId + 1
-	$fullPath = Get-Location
  
 	Write-Host "[$($pwd)]" -ForegroundColor "Cyan"
 	Write-Host -NoNewline '[' -ForegroundColor "Gray"
@@ -100,4 +112,6 @@ function global:prompt {
 	Write-Host -NoNewline " PS$('>' * ($nestedPromptLevel + 1)) " -ForegroundColor $userColor
 	Return " "
 }
+Set-Theme Paradox
+Set-Location $env:userprofile\Code
 #endregion
