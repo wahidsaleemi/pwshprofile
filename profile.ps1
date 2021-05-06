@@ -4,13 +4,17 @@ Add-Content -Value "# $(Get-Date) $env:username $env:computername" -Path $PSLogP
 Add-Content -Value "# $(Get-Location)" -Path $PSLogPath -erroraction SilentlyContinue
 #endregion
 
+#Optimize profile load
+$MyScript = [powershell]::Create()
+
+
 #region Modules
 ## Modules needed for Powerline (Git info): https://docs.microsoft.com/en-us/windows/terminal/tutorials/powerline-setup
-Import-Module Posh-Git
-Import-Module Oh-My-Posh
+Import-Module -Name Posh-Git -SkipEditionCheck -DisableNameChecking
+Import-Module -Name  Oh-My-Posh -MinimumVersion 3.0.0 -SkipEditionCheck -DisableNameChecking
 
 ## Autocomplete
-Import-Module PSReadLine
+Import-Module -Name PSReadLine -SkipEditionCheck -DisableNameChecking
 #endregion
 
 #region PSReadLine Settings
@@ -112,6 +116,14 @@ function global:prompt {
 	Write-Host -NoNewline " PS$('>' * ($nestedPromptLevel + 1)) " -ForegroundColor $userColor
 	Return " "
 }
-Set-Theme Paradox
+
+#Oh-my-posh settings
+if ((get-module -Name Oh-my-posh).Version.Major -lt 3)
+	{
+		Set-Theme Paradox
+	}
+else {
+	Set-PoshPrompt -Theme agnosterplus
+}
 Set-Location $env:userprofile\Code
 #endregion
