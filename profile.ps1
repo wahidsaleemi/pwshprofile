@@ -1,21 +1,29 @@
+Write-Host "$(Get-Date -Format "HH:mm:ss"): Loading profile..." -ForegroundColor Cyan
+
+#region Start AzSubscription Helper
+$PowerShell = [powershell]::Create()
+$Runspace = [runspacefactory]::CreateRunspace() # Create the runspace
+$Runspace.Open()
+$PowerShell.Runspace = $Runspace #Associate Runspace with PowerShell script manager
+[void]$PowerShell.AddScript({
+    Get-AzSubscription -TenantId microsoft.onmicrosoft.com -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Select-Object -ExpandProperty name
+})
+# It is very important to save the output of this to a variable so you have a way to end the runspace when it has completed
+$asyncResult = $PowerShell.BeginInvoke()
+#endregion
+
 #region Logging
 $PSLogPath = ("{0}{1}\Documents\WindowsPowerShell\log\{2:yyyyMMdd}-{3}.log" -f $env:HOMEDRIVE, $env:HOMEPATH,  (Get-Date), $PID)
 Add-Content -Value "# $(Get-Date) $env:username $env:computername" -Path $PSLogPath -erroraction SilentlyContinue
 Add-Content -Value "# $(Get-Location)" -Path $PSLogPath -erroraction SilentlyContinue
 #endregion
 
-#Optimize profile load
-$MyScript = [powershell]::Create()
-
-
 #region Modules
-## Modules needed for Powerline (Git info): https://docs.microsoft.com/en-us/windows/terminal/tutorials/powerline-setup
-Import-Module -Name Posh-Git -SkipEditionCheck -DisableNameChecking
-Import-Module -Name  Oh-My-Posh -MinimumVersion 3.0.0 -SkipEditionCheck -DisableNameChecking
-
-## Autocomplete
-Import-Module -Name PSReadLine -SkipEditionCheck -DisableNameChecking
+Import-Module Posh-Git -SkipEditionCheck -DisableNameChecking
+Import-Module -Name oh-my-posh -MinimumVersion 3.0.0 -DisableNameChecking
+Import-Module PSReadLine -SkipEditionCheck -DisableNameChecking
 #endregion
+
 
 #region PSReadLine Settings
 ## Set text prediction https://devblogs.microsoft.com/powershell/announcing-psreadline-2-1-with-predictive-intellisense/
@@ -28,9 +36,9 @@ Set-PSReadlineKeyHandler -Key DownArrow -Function HistorySearchForward
 Set-PSReadlineOption -BellStyle None #Disable ding on typing error
 Set-PSReadlineOption -EditMode Emacs #Make TAB key show parameter options
 Set-PSReadlineKeyHandler -Key Ctrl+i -ScriptBlock { Start-Process "${env:ProgramFiles}\vivaldi\Application\vivaldi.exe" -ArgumentList "https://www.bing.com" } #KEY: Load Browsers using key "C:\Program Files\Vivaldi\Application\vivaldi.exe"
- 
+
 #KEY: Git, press Ctrl+Shift+G (case sensitive)
-Set-PSReadlineKeyHandler -Chord Ctrl+G -ScriptBlock {
+Set-PSReadlineKeyHandler -Chord Ctrl+g -ScriptBlock {
 		$message = Read-Host "Please enter a commit message"
 		/usr/bin/git commit -m "$message" | Write-Host
 		$branch = (/usr/bin/git rev-parse --abbrev-ref HEAD)
@@ -40,6 +48,25 @@ Set-PSReadlineKeyHandler -Chord Ctrl+G -ScriptBlock {
 #endregion
 
 #region Functions
+function Update-AzCompletion {
+	## Source: https://millerb.co.uk/2019/09/11/Tab-Completion-Azure-Subscriptions.html
+## Source for runspace: https://trevorsullivan.net/2020/10/02/optimize-powershell-startup-profile-script/
+	#Get-AzSubscription -AsJob -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
+	Register-ArgumentCompleter -CommandName Set-AzContext -ParameterName Subscription -ScriptBlock {
+		  # If the job exists from the command Get-AzSubscription, receive the results & remove the job
+		  if ($job = Get-job -Command Get-AzSubscription | Wait-Job) 
+			  {
+				  $global:azSubscriptions = Receive-Job -Id $job.Id | Select-Object -ExpandProperty name
+				  Remove-Job -Id $job.Id
+			  }
+		  # Add the completion results for the parameter
+		  $global:azSubscriptions | foreach-object {
+			  [System.Management.Automation.CompletionResult]::new(
+				  $_
+			  )
+		  }
+	  }
+  }
 function Get-DirectorySize($Path='.',$InType="MB")
 {
 	$colItems = (Get-ChildItem $Path -recurse | Measure-Object -property length -sum)
@@ -54,26 +81,6 @@ function Get-DirectorySize($Path='.',$InType="MB")
 }
 function Test-IsAdmin {
 ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-}
-#endregion
-
-#region Az Subscription Helper
-## Source: https://millerb.co.uk/2019/09/11/Tab-Completion-Azure-Subscriptions.html
-# Get all azure subscriptions as a background job
-Get-AzSubscription -AsJob -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
-
-Register-ArgumentCompleter -CommandName Set-AzContext -ParameterName Subscription -ScriptBlock {
-    # If the job exists from the command Get-AzSubscription, receive the results & remove the job
-    if ($job = Get-job -Command Get-AzSubscription | Wait-Job) {
-        $global:azSubscriptions = Receive-Job -Id $job.Id | Select-Object -ExpandProperty name
-        Remove-Job -Id $job.Id
-    }
-    # Add the completion results for the parameter
-    $global:azSubscriptions | foreach-object {
-        [System.Management.Automation.CompletionResult]::new(
-            $_
-        )
-    }
 }
 #endregion
 
@@ -118,12 +125,39 @@ function global:prompt {
 }
 
 #Oh-my-posh settings
-if ((get-module -Name Oh-my-posh).Version.Major -lt 3)
+if ((Get-module -Name Oh-my-posh).Version.Major -lt 3)
 	{
 		Set-Theme Paradox
 	}
 else {
 	Set-PoshPrompt -Theme agnosterplus
 }
+
 Set-Location $env:userprofile\Code
 #endregion
+
+
+#region Az Subscription Helper Finish
+$null = Register-ObjectEvent -InputObject $PowerShell -EventName "InvocationStateChanged" -Action {
+	param([System.Management.Automation.PowerShell] $ps)
+	$state = $EventArgs.InvocationStateInfo.State
+
+	Write-Host "Invocation state: $state"
+	if ($state -in 'Completed', 'Failed') {
+		# Dispose of the runspace.
+		Write-Host "$(Get-Date -Format "HH:mm:ss"): Disposing of runspace." -ForegroundColor Cyan
+		$ps.Runspace.Dispose()
+		# Speed up resource release by calling the garbage collector explicitly.
+		# Note that this will pause *all* threads briefly.
+		[GC]::Collect()
+	}
+	$Global:azsubs = $PowerShell.EndInvoke($asyncResult)
+	Register-ArgumentCompleter -CommandName Set-AzContext -ParameterName Subscription -ScriptBlock {
+		# Add the completion results for the parameter 
+		$global:azSubs | Foreach-Object {
+			[System.Management.Automation.CompletionResult]::new($_)
+		}
+	}
+}
+#endregion
+Write-Host "$(Get-Date -Format "HH:mm:ss"): Profile loaded." -ForegroundColor Cyan
