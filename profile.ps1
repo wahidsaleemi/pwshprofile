@@ -1,5 +1,5 @@
 Write-Host "$(Get-Date -Format "HH:mm:ss"): Loading profile..." -ForegroundColor Cyan
-
+$env:AZ_ENABLED=$false
 #region Start AzSubscription Helper
 $PowerShell = [powershell]::Create()
 $Runspace = [runspacefactory]::CreateRunspace() # Create the runspace
@@ -24,7 +24,6 @@ Import-Module -Name oh-my-posh -MinimumVersion 3.0.0 -DisableNameChecking
 Import-Module PSReadLine -SkipEditionCheck -DisableNameChecking
 #endregion
 
-
 #region PSReadLine Settings
 ## Set text prediction https://devblogs.microsoft.com/powershell/announcing-psreadline-2-1-with-predictive-intellisense/
 Set-PSReadLineOption -PredictionSource History
@@ -47,26 +46,13 @@ Set-PSReadlineKeyHandler -Chord Ctrl+g -ScriptBlock {
 }
 #endregion
 
+#region Posh-Git settings
+$GitPromptSettings.BranchColor.ForegroundColor = "#0000FF"
+$GitPromptSettings.BeforeStatus.ForegroundColor = "#696969"
+$GitPromptSettings.AfterStatus.ForegroundColor = "#696969"
+#endregion
+
 #region Functions
-function Update-AzCompletion {
-	## Source: https://millerb.co.uk/2019/09/11/Tab-Completion-Azure-Subscriptions.html
-## Source for runspace: https://trevorsullivan.net/2020/10/02/optimize-powershell-startup-profile-script/
-	#Get-AzSubscription -AsJob -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
-	Register-ArgumentCompleter -CommandName Set-AzContext -ParameterName Subscription -ScriptBlock {
-		  # If the job exists from the command Get-AzSubscription, receive the results & remove the job
-		  if ($job = Get-job -Command Get-AzSubscription | Wait-Job) 
-			  {
-				  $global:azSubscriptions = Receive-Job -Id $job.Id | Select-Object -ExpandProperty name
-				  Remove-Job -Id $job.Id
-			  }
-		  # Add the completion results for the parameter
-		  $global:azSubscriptions | foreach-object {
-			  [System.Management.Automation.CompletionResult]::new(
-				  $_
-			  )
-		  }
-	  }
-  }
 function Get-DirectorySize($Path='.',$InType="MB")
 {
 	$colItems = (Get-ChildItem $Path -recurse | Measure-Object -property length -sum)
@@ -125,17 +111,15 @@ function global:prompt {
 }
 
 #Oh-my-posh settings
-if ((Get-module -Name Oh-my-posh).Version.Major -lt 3)
+if ((Get-module -Name Oh-my-posh).Version.Major -lt 3.0.0)
 	{
 		Set-Theme Paradox
 	}
 else {
-	Set-PoshPrompt -Theme agnosterplus
+	Set-PoshPrompt -Theme agnosterpluswahid
 }
-
 Set-Location $env:userprofile\Code
 #endregion
-
 
 #region Az Subscription Helper Finish
 $null = Register-ObjectEvent -InputObject $PowerShell -EventName "InvocationStateChanged" -Action {
@@ -160,4 +144,5 @@ $null = Register-ObjectEvent -InputObject $PowerShell -EventName "InvocationStat
 	}
 }
 #endregion
+
 Write-Host "$(Get-Date -Format "HH:mm:ss"): Profile loaded." -ForegroundColor Cyan
